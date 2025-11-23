@@ -1,2 +1,0 @@
-# Production dependencies
-# (None currently - pure Python implementation)

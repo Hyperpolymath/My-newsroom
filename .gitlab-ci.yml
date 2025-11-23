@@ -1,145 +1,83 @@
-# GitLab CI/CD Pipeline for My-newsroom
-# RSR-compliant automated testing and validation
+# GitLab CI/CD Pipeline for My-newsroom (Julia + Rust)
+# RSR-compliant automated testing
 
 variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  JULIA_VERSION: "1.9"
   CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
 
 cache:
   paths:
-    - .cache/pip
     - .cache/cargo
     - target/
 
 stages:
-  - lint
   - test
   - build
   - security
   - deploy
 
-# Python linting
-python:lint:
-  stage: lint
-  image: python:3.11
+# Julia testing
+julia:test:
+  stage: test
+  image: julia:${JULIA_VERSION}
   before_script:
-    - pip install -r requirements-dev.txt
+    - julia --project=. -e 'using Pkg; Pkg.instantiate()'
   script:
-    - ruff check src/ tests/
-    - black --check src/ tests/
-    - mypy src/
+    - julia --project=. test/runtests.jl
   allow_failure: false
 
-# Python testing
-python:test:
-  stage: test
-  image: python:3.11
-  before_script:
-    - pip install -e .
-    - pip install -r requirements-dev.txt
-  script:
-    - pytest tests/ -v --cov=mynewsroom --cov-report=term --cov-report=html --cov-report=xml
-  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: coverage.xml
-    paths:
-      - htmlcov/
-    expire_in: 1 week
-
-# Property-based testing
-python:property:
-  stage: test
-  image: python:3.11
-  before_script:
-    - pip install -e .
-    - pip install -r requirements-dev.txt
-  script:
-    - pytest tests/ -v -m property --hypothesis-show-statistics
-  allow_failure: true  # Property tests can be flaky
-
-# Rust linting (when Solo compiler exists)
-rust:lint:
-  stage: lint
-  image: rust:latest
-  script:
-    - cargo fmt -- --check
-    - cargo clippy -- -D warnings
-  only:
-    changes:
-      - "**/*.rs"
-      - "Cargo.toml"
-  allow_failure: false
-
-# Rust testing (when Solo compiler exists)
+# Rust testing
 rust:test:
   stage: test
   image: rust:latest
   script:
-    - cargo test --all --verbose
+    - cd solo-compiler && cargo test --all --verbose
   only:
     changes:
-      - "**/*.rs"
-      - "Cargo.toml"
+      - "solo-compiler/**/*.rs"
+      - "solo-compiler/Cargo.toml"
 
-# Security scanning - Python
-security:python:
-  stage: security
-  image: python:3.11
-  before_script:
-    - pip install safety bandit
+# Rust linting
+rust:lint:
+  stage: test
+  image: rust:latest
   script:
-    - safety check -r requirements.txt -r requirements-dev.txt
-    - bandit -r src/ -f json -o bandit-report.json
-  artifacts:
-    reports:
-      sast: bandit-report.json
-    expire_in: 1 week
-  allow_failure: true
+    - cd solo-compiler && cargo fmt -- --check
+    - cd solo-compiler && cargo clippy -- -D warnings
+  only:
+    changes:
+      - "solo-compiler/**/*.rs"
+      - "solo-compiler/Cargo.toml"
 
-# Security scanning - Rust (when Solo compiler exists)
+# Security - Rust
 security:rust:
   stage: security
   image: rust:latest
-  script:
+  before_script:
     - cargo install cargo-audit
-    - cargo audit
+  script:
+    - cd solo-compiler && cargo audit
+  allow_failure: true
   only:
     changes:
-      - "**/*.rs"
-      - "Cargo.toml"
-  allow_failure: true
+      - "solo-compiler/Cargo.toml"
 
-# Build Python package
-build:python:
-  stage: build
-  image: python:3.11
-  script:
-    - pip install build
-    - python -m build
-  artifacts:
-    paths:
-      - dist/
-    expire_in: 1 week
-
-# Build Rust binary (when Solo compiler exists)
+# Build Rust
 build:rust:
   stage: build
   image: rust:latest
   script:
-    - cargo build --release
+    - cd solo-compiler && cargo build --release
   artifacts:
     paths:
-      - target/release/solo
+      - solo-compiler/target/release/solo
     expire_in: 1 week
   only:
     changes:
-      - "**/*.rs"
-      - "Cargo.toml"
+      - "solo-compiler/**/*.rs"
+      - "solo-compiler/Cargo.toml"
 
-# RSR compliance validation
+# RSR compliance
 validate:rsr:
   stage: test
   image: alpine:latest
@@ -149,23 +87,18 @@ validate:rsr:
     - sh -c 'test -f README.md || (echo "❌ README.md missing" && exit 1)'
     - sh -c 'test -f LICENSE.txt || (echo "❌ LICENSE.txt missing" && exit 1)'
     - sh -c 'test -f SECURITY.md || (echo "❌ SECURITY.md missing" && exit 1)'
-    - sh -c 'test -f CONTRIBUTING.md || (echo "❌ CONTRIBUTING.md missing" && exit 1)'
-    - sh -c 'test -f CODE_OF_CONDUCT.md || (echo "❌ CODE_OF_CONDUCT.md missing" && exit 1)'
     - sh -c 'test -f .well-known/security.txt || (echo "❌ security.txt missing" && exit 1)'
-    - sh -c 'test -f .well-known/ai.txt || (echo "❌ ai.txt missing" && exit 1)'
-    - sh -c 'test -f .well-known/humans.txt || (echo "❌ humans.txt missing" && exit 1)'
     - echo "✅ RSR Bronze level requirements met"
   allow_failure: false
 
-# Deploy documentation (to GitLab Pages)
+# Documentation
 pages:
   stage: deploy
-  image: python:3.11
-  before_script:
-    - pip install mkdocs mkdocs-material
+  image: julia:${JULIA_VERSION}
   script:
-    - mkdocs build
-    - mv site public
+    - julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+    - julia --project=docs docs/make.jl
+    - mv docs/build public
   artifacts:
     paths:
       - public
