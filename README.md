@@ -320,7 +320,7 @@ See [`.well-known/humans.txt`](.well-known/humans.txt) for full credits.
 
 ## 📞 Contact
 
-- **Project Lead:** [Your Name/Handle]
+- **Project Lead:** Jonathan D.A. Jewell (hyperpolymath)
 - **GitLab:** https://gitlab.com/Hyperpolymath/My-newsroom
 - **Issues:** https://gitlab.com/Hyperpolymath/My-newsroom/-/issues
 - **Discussions:** https://gitlab.com/Hyperpolymath/My-newsroom/-/discussions
